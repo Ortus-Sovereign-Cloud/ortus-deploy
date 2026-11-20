@@ -66,8 +66,10 @@ database:
 # that render without a cluster, name a secret you made (key `key`: 32
 # random bytes, base64, as `openssl rand -base64 32` prints): otherwise a
 # new key would be made on every sync and Ortus would refuse to start.
-# Several keys, comma separated, the first current, after `ortus
-# rotate-keys`.
+# To rotate: put a new key first ("new,old" in the secret), restart every
+# workload (`kubectl rollout restart deployment -l app.kubernetes.io/instance=<release>`);
+# the first to start re-seals everything under the new key. Keep the old
+# key in the list for as long as you keep backups made before.
 secrets:
   existingSecret: ""
 
