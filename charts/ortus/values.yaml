@@ -68,6 +68,11 @@ files:
   bucket: ortus
   region: us-east-1
   bundled:
+    # With GitOps tools that render the chart without a cluster (Argo CD,
+    # Flux), name a secret you made (keys access_key, secret_key): the
+    # chart cannot see an existing one there and would make new keys on
+    # every sync.
+    existingSecret: ""
     image:
       repository: rustfs/rustfs
       tag: "1.0.6"
@@ -90,9 +95,14 @@ files:
 backup:
   enabled: true
   schedule: "15 3 * * *"
-  keep: 7
-  storage: 20Gi
+  # Each backup is a full copy of the database and every file: size the
+  # volume for keep + 1 copies.
+  keep: 3
+  storage: 50Gi
   storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 2Gi}
 
 podSecurityContext:
   runAsNonRoot: true

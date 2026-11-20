@@ -16,7 +16,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- define "ortus.dbKey" -}}{{ if eq .Values.database.mode "bundled" }}uri{{ else }}{{ .Values.database.external.key }}{{ end }}{{- end -}}
 
 {{- define "ortus.s3Secret" -}}
-{{- if eq .Values.files.mode "bundled" -}}{{ include "ortus.name" . }}-files{{- else -}}{{ required "files.external.existingSecret is required when files.mode is external" .Values.files.external.existingSecret }}{{- end -}}
+{{- if eq .Values.files.mode "bundled" -}}{{ .Values.files.bundled.existingSecret | default (printf "%s-files" (include "ortus.name" .)) }}{{- else -}}{{ required "files.external.existingSecret is required when files.mode is external" .Values.files.external.existingSecret }}{{- end -}}
 {{- end -}}
 {{- define "ortus.s3Endpoint" -}}
 {{- if eq .Values.files.mode "bundled" -}}http://{{ include "ortus.name" . }}-files:9000{{- else -}}{{ required "files.external.endpoint is required when files.mode is external" .Values.files.external.endpoint }}{{- end -}}

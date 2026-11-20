@@ -3,6 +3,8 @@
 {{- end }}
 {{- if eq .Values.files.mode "bundled" }}
 {{- $name := printf "%s-files" (include "ortus.name" .) }}
+{{- $secret := include "ortus.s3Secret" . }}
+{{- if not .Values.files.bundled.existingSecret }}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
 apiVersion: v1
 kind: Secret
@@ -21,6 +23,7 @@ data:
   access_key: {{ printf "ortus%s" (randAlphaNum 12 | lower) | b64enc }}
   secret_key: {{ randAlphaNum 40 | b64enc }}
   {{- end }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -71,10 +74,10 @@ spec:
               value: "false"
             - name: RUSTFS_ACCESS_KEY
               valueFrom:
-                secretKeyRef: {name: {{ $name }}, key: access_key}
+                secretKeyRef: {name: {{ $secret }}, key: access_key}
             - name: RUSTFS_SECRET_KEY
               valueFrom:
-                secretKeyRef: {name: {{ $name }}, key: secret_key}
+                secretKeyRef: {name: {{ $secret }}, key: secret_key}
           ports:
             - name: s3
               containerPort: 9000

@@ -25,6 +25,10 @@ helm install ortus charts/ortus -n ortus --create-namespace
 
 With `helm --wait`, a storage class that binds volumes on first use (as most local ones do) keeps the backup volume pending until the first backup runs, so the install waits for its timeout; leave out `--wait` and check `kubectl rollout status` instead, or turn backups off.
 
+**Upgrades and rollbacks.** Every program brings the database up to date when it starts; a program refuses a database newer than it knows. So `helm rollback` after an upgrade that changed the database leaves the older pods crash-looping: to go back, restore the backup taken before the upgrade into an empty database. Take one (`kubectl create job --from=cronjob/<release>-backup before-upgrade`) before every upgrade.
+
+**GitOps.** Tools that render the chart without a cluster (Argo CD, Flux) cannot see the generated S3 keys of the bundled RustFS and would make new ones on every sync: set `files.bundled.existingSecret` to a secret you made (keys `access_key`, `secret_key`).
+
 Every pod runs as a non-root user with a read-only root file system and no capabilities. The Ortus image holds one static program and nothing else.
 
 ## Checks

@@ -41,10 +41,12 @@ spec:
           ports:
             - name: http
               containerPort: 7878
+          # Starting includes bringing the database up to date, which can
+          # take minutes after an upgrade.
           startupProbe:
             httpGet: {path: /livez, port: http}
             periodSeconds: 2
-            failureThreshold: 90
+            failureThreshold: 600
           livenessProbe:
             httpGet: {path: /livez, port: http}
             periodSeconds: 10
