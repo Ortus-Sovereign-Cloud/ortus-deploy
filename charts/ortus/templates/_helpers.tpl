@@ -49,6 +49,16 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
     secretKeyRef:
       name: {{ include "ortus.s3Secret" . }}
       key: secret_key
+- name: ORTUS_SECRETS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ortus.secretsSecret" . }}
+      key: key
+{{- end -}}
+
+{{/* The secret holding the master key that seals stored secrets. */}}
+{{- define "ortus.secretsSecret" -}}
+{{- .Values.secrets.existingSecret | default (printf "%s-secrets" (include "ortus.name" .)) -}}
 {{- end -}}
 
 {{- define "ortus.podSpecCommon" -}}

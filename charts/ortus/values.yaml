@@ -61,6 +61,16 @@ database:
     key: url
   maxConnections: 16
 
+# The master key that seals the secrets kept in the database. The chart
+# makes one and keeps it (helm.sh/resource-policy: keep). With GitOps tools
+# that render without a cluster, name a secret you made (key `key`: 32
+# random bytes, base64, as `openssl rand -base64 32` prints): otherwise a
+# new key would be made on every sync and Ortus would refuse to start.
+# Several keys, comma separated, the first current, after `ortus
+# rotate-keys`.
+secrets:
+  existingSecret: ""
+
 # File contents: S3. `bundled` runs RustFS in the cluster; `external` uses
 # a store you run.
 files:

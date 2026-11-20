@@ -18,6 +18,15 @@ fi
 if helm template t charts/ortus --set files.mode=elsewhere >/dev/null 2>&1; then
   echo "check: an unknown files.mode must be refused" >&2; exit 1
 fi
+# Every workload reads the one master key; a named secret replaces the made one.
+rendered="$(helm template t charts/ortus)"
+workloads=$(grep -c '^kind: \(Deployment\|CronJob\)' <<<"$rendered")
+keyed=$(grep -c 'name: ORTUS_SECRETS_KEY' <<<"$rendered")
+[ "$workloads" -ge 1 ] && [ "$keyed" -eq "$workloads" ] || { echo "check: $keyed of $workloads workloads get ORTUS_SECRETS_KEY" >&2; exit 1; }
+grep -q 'name: t-secrets$' <<<"$rendered" || { echo "check: the master key secret is not made" >&2; exit 1; }
+if helm template t charts/ortus --set secrets.existingSecret=mine | grep -q 'name: t-secrets$'; then
+  echo "check: secrets.existingSecret must replace the made secret" >&2; exit 1
+fi
 # No GPL, AGPL, LGPL or MPL in what the chart runs: every image is listed
 # here with its licence, and an image not in the list fails the check.
 ci/images.sh
