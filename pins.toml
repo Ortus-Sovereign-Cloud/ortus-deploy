@@ -1,0 +1,3 @@
+# The ortus commit the chart test builds its image from. Change it only to
+# a commit whose own CI is green.
+ortus = "0aceb0cd583f72f7c9b8ebcbdb43c7ed35a4027f"

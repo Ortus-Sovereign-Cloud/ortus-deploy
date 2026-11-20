@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Every check CI runs, in the same order. Run it before each push. The
+# chart test needs Docker and k3d; it makes and deletes its own cluster.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+for script in ci/*.sh; do bash -n "$script"; done
+if command -v shellcheck >/dev/null; then shellcheck -S warning ci/*.sh; fi
+helm lint --strict charts/ortus
+# Every combination of storage renders, and wrong settings are refused.
+helm template t charts/ortus >/dev/null
+helm template t charts/ortus --set database.mode=external --set database.external.existingSecret=db \
+  --set files.mode=external --set files.external.endpoint=http://s3 --set files.external.existingSecret=s3 >/dev/null
+helm template t charts/ortus --set web.ingress.enabled=true --set web.ingress.tlsSecret=tls --set backup.enabled=false \
+  --set roles.mail.enabled=false --set roles.media.enabled=false >/dev/null
+if helm template t charts/ortus --set database.mode=external >/dev/null 2>&1; then
+  echo "check: an external database without a secret must be refused" >&2; exit 1
+fi
+if helm template t charts/ortus --set files.mode=elsewhere >/dev/null 2>&1; then
+  echo "check: an unknown files.mode must be refused" >&2; exit 1
+fi
+# No GPL, AGPL, LGPL or MPL in what the chart runs: every image is listed
+# here with its licence, and an image not in the list fails the check.
+ci/images.sh
+ci/chart-test.sh
+echo "all checks passed"

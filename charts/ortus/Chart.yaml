@@ -1,0 +1,11 @@
+apiVersion: v2
+name: ortus
+description: Ortus, a sovereign workspace (mail, calendar, files, documents, chat, calls, tasks and approvals), one workload per role.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+license: MIT OR Apache-2.0
+home: https://github.com/Ortus-Sovereign-Cloud/ortus-deploy
+sources:
+  - https://github.com/Ortus-Sovereign-Cloud/ortus
+kubeVersion: ">=1.27.0-0"

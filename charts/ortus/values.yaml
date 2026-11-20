@@ -1,0 +1,112 @@
+# The Ortus program. Every role runs the same image with ORTUS_ROLES set.
+image:
+  repository: ghcr.io/ortus-sovereign-cloud/ortus
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# One workload per role.
+roles:
+  web:
+    replicas: 2
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {memory: 512Mi}
+  worker:
+    replicas: 1
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+  # Mail and media open their listeners in later releases; they run already
+  # so an installation has its final shape from the start.
+  mail:
+    enabled: true
+    replicas: 1
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+  media:
+    enabled: true
+    replicas: 1
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+
+web:
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+    className: ""
+    host: ortus.example.org
+    annotations: {}
+    # Name of a TLS secret for the host; empty for none.
+    tlsSecret: ""
+
+# The database: PostgreSQL. `bundled` makes a CloudNativePG cluster (the
+# CloudNativePG operator must be installed in the cluster first);
+# `external` uses one you run.
+database:
+  mode: bundled
+  bundled:
+    instances: 1
+    storage: 10Gi
+    storageClass: ""
+  external:
+    # A secret in this namespace holding the connection URL
+    # (postgres://user:password@host:5432/db).
+    existingSecret: ""
+    key: url
+  maxConnections: 16
+
+# File contents: S3. `bundled` runs RustFS in the cluster; `external` uses
+# a store you run.
+files:
+  mode: bundled
+  bucket: ortus
+  region: us-east-1
+  bundled:
+    image:
+      repository: rustfs/rustfs
+      tag: "1.0.6"
+    storage: 20Gi
+    storageClass: ""
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {memory: 1Gi}
+  external:
+    endpoint: ""
+    # A secret in this namespace with keys access_key and secret_key.
+    existingSecret: ""
+  # Creates the bucket after install and upgrade when it is missing.
+  bucketJob:
+    image:
+      repository: amazon/aws-cli
+      tag: "2.31.39"
+
+# A backup of the database and files, as `ortus backup`, onto a volume.
+backup:
+  enabled: true
+  schedule: "15 3 * * *"
+  keep: 7
+  storage: 20Gi
+  storageClass: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

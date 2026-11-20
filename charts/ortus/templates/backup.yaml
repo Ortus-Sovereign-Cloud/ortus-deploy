@@ -1,0 +1,60 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ortus.name" . }}-backups
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.backup.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ortus.name" . }}-backup
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "ortus.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          {{- include "ortus.podSpecCommon" . | nindent 10 }}
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: {{ include "ortus.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: ["backup", "--into", "/backups", "--keep", {{ .Values.backup.keep | quote }}]
+              env:
+                {{- include "ortus.env" . | nindent 16 }}
+              securityContext: {{ toYaml .Values.securityContext | nindent 16 }}
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: data
+              emptyDir: {}
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "ortus.name" . }}-backups
+{{- end }}

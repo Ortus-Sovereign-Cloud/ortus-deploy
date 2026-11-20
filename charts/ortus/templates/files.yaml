@@ -1,0 +1,150 @@
+{{- if not (has .Values.files.mode (list "bundled" "external")) }}
+{{- fail "files.mode must be bundled or external" }}
+{{- end }}
+{{- if eq .Values.files.mode "bundled" }}
+{{- $name := printf "%s-files" (include "ortus.name" .) }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  {{- if $existing }}
+  access_key: {{ index $existing.data "access_key" }}
+  secret_key: {{ index $existing.data "secret_key" }}
+  {{- else }}
+  access_key: {{ printf "ortus%s" (randAlphaNum 12 | lower) | b64enc }}
+  secret_key: {{ randAlphaNum 40 | b64enc }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: files
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: files
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: files
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: files
+  template:
+    metadata:
+      labels:
+        {{- include "ortus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: files
+    spec:
+      {{- include "ortus.podSpecCommon" . | nindent 6 }}
+      containers:
+        - name: rustfs
+          image: {{ .Values.files.bundled.image.repository }}:{{ .Values.files.bundled.image.tag }}
+          env:
+            - name: RUSTFS_VOLUMES
+              value: /data
+            - name: RUSTFS_ADDRESS
+              value: ":9000"
+            - name: RUSTFS_CONSOLE_ENABLE
+              value: "false"
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ $name }}, key: access_key}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ $name }}, key: secret_key}
+          ports:
+            - name: s3
+              containerPort: 9000
+          readinessProbe:
+            tcpSocket: {port: s3}
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources: {{ toYaml .Values.files.bundled.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.files.bundled.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.files.bundled.storage }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ortus.name" . }}-bucket
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 30
+  template:
+    metadata:
+      labels:
+        {{- include "ortus.labels" . | nindent 8 }}
+    spec:
+      {{- include "ortus.podSpecCommon" . | nindent 6 }}
+      restartPolicy: OnFailure
+      containers:
+        - name: bucket
+          image: {{ .Values.files.bucketJob.image.repository }}:{{ .Values.files.bucketJob.image.tag }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - aws --endpoint-url "$ENDPOINT" s3api head-bucket --bucket "$BUCKET" || aws --endpoint-url "$ENDPOINT" s3 mb "s3://$BUCKET"
+          env:
+            - name: HOME
+              value: /tmp
+            - name: ENDPOINT
+              value: {{ include "ortus.s3Endpoint" . | quote }}
+            - name: BUCKET
+              value: {{ .Values.files.bucket | quote }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.files.region | quote }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: {{ include "ortus.s3Secret" . }}, key: access_key}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ include "ortus.s3Secret" . }}, key: secret_key}
+          securityContext: {{ toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

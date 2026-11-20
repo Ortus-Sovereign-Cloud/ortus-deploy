@@ -1,0 +1,113 @@
+{{- $root := . -}}
+{{- range $role := list "web" "worker" "mail" "media" }}
+{{- $spec := index $root.Values.roles $role }}
+{{- if or (eq $role "web") (eq $role "worker") $spec.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ortus.name" $root }}-{{ $role }}
+  labels:
+    {{- include "ortus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  replicas: {{ $spec.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $role }}
+  template:
+    metadata:
+      labels:
+        {{- include "ortus.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $role }}
+    spec:
+      {{- include "ortus.podSpecCommon" $root | nindent 6 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: ortus
+          image: {{ include "ortus.image" $root }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            - name: ORTUS_ROLES
+              value: {{ $role }}
+            {{- include "ortus.env" $root | nindent 12 }}
+          {{- if eq $role "web" }}
+            - name: ORTUS_WEB_IP
+              value: "0.0.0.0"
+            - name: ORTUS_WEB_PORT
+              value: "7878"
+          ports:
+            - name: http
+              containerPort: 7878
+          startupProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 2
+            failureThreshold: 90
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          {{- end }}
+          securityContext: {{ toYaml $root.Values.securityContext | nindent 12 }}
+          resources: {{ toYaml $spec.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ortus.name" . }}-web
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: {{ .Values.web.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+{{- if .Values.web.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ortus.name" . }}-web
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+  {{- with .Values.web.ingress.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.web.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.web.ingress.tlsSecret }}
+  tls:
+    - hosts: [{{ .Values.web.ingress.host | quote }}]
+      secretName: {{ .Values.web.ingress.tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.web.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ortus.name" . }}-web
+                port:
+                  name: http
+{{- end }}

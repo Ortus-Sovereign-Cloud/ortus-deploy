@@ -1,0 +1,22 @@
+{{- if not (has .Values.database.mode (list "bundled" "external")) }}
+{{- fail "database.mode must be bundled or external" }}
+{{- end }}
+{{- if eq .Values.database.mode "bundled" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "ortus.name" . }}-db
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.database.bundled.instances }}
+  storage:
+    size: {{ .Values.database.bundled.storage }}
+    {{- with .Values.database.bundled.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: ortus
+      owner: ortus
+{{- end }}
