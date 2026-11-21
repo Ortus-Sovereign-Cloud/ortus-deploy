@@ -6,6 +6,14 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
+# The address people reach the installation at, like
+# https://ortus.example.org (links in mail, passkeys, calendar invitations).
+publicUrl: ""
+
+# More settings for every Ortus container, as ORTUS_* variables:
+#   extraEnv: [{name: ORTUS_TRUSTED_PROXIES, value: "10.0.0.0/8"}]
+extraEnv: []
+
 # One workload per role.
 roles:
   web:
@@ -18,16 +26,33 @@ roles:
     resources:
       requests: {cpu: 50m, memory: 64Mi}
       limits: {memory: 512Mi}
-  # Mail and media open their listeners in later releases; they run already
-  # so an installation has its final shape from the start.
+  # Mail: SMTP (25), submission (587, and 465 with TLS), IMAP (143, and 993
+  # with TLS). The pod listens on high ports (no privileges); the Service
+  # gives the standard ones. Mail from the internet needs port 25 on a
+  # public address: a LoadBalancer, or your own routing to the Service.
   mail:
     enabled: true
     replicas: 1
+    # The name other servers know the mail host by (its MX and certificate).
+    hostname: ""
+    # A kubernetes.io/tls secret for that name: opens 465 and 993, and
+    # STARTTLS on the others.
+    tlsSecret: ""
+    service:
+      type: LoadBalancer
+      annotations: {}
     resources:
       requests: {cpu: 50m, memory: 64Mi}
       limits: {memory: 512Mi}
   media:
     enabled: true
+    # Call media (UDP, with a TCP fallback on the same port). People in a
+    # call reach it at publicAddress (ip:port of the Service from outside).
+    port: 40000
+    publicAddress: ""
+    service:
+      type: LoadBalancer
+      annotations: {}
     replicas: 1
     resources:
       requests: {cpu: 50m, memory: 64Mi}

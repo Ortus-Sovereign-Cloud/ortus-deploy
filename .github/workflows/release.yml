@@ -1,7 +1,9 @@
-# A chart release: for a tag vX.Y.Z, the packaged chart pushed to
-# ghcr.io/ortus-sovereign-cloud/charts and attached to the release, with
-# its checksum signed keylessly (Sigstore), naming this workflow. Run by
-# hand it is a dry run: packaged and signed, kept as a CI artifact.
+# A chart release: for a tag vX.Y.Z on main whose CI passed, the chart
+# packaged as version X.Y.Z (appVersion X.Y.Z, the image tag it runs),
+# pushed to oci://ghcr.io/ortus-sovereign-cloud/charts and signed there,
+# and attached to the release with SHA256SUMS signed keylessly (Sigstore):
+# the certificate names this workflow at the tag. Run by hand it is a dry
+# run: packaged and signed (naming a branch), kept as a CI artifact.
 name: release
 
 on:
@@ -9,40 +11,68 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  id-token: write
-  packages: write
+permissions: {}
+
+env:
+  PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   chart:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+      actions: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.3
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: The tag is on main and its CI passed
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "release: $GITHUB_SHA is not on main" >&2; exit 1; }
+          ok=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci --commit "$GITHUB_SHA" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')
+          [ "$ok" -ge 1 ] || { echo "release: CI did not pass on $GITHUB_SHA" >&2; exit 1; }
       - name: Package and sign
+        env:
+          REF: ${{ github.ref_name }}
         run: |
           helm lint --strict charts/ortus
           mkdir -p dist
-          helm package charts/ortus -d dist
+          if [ "$PUBLISH" = true ]; then
+            helm package charts/ortus -d dist --version "${REF#v}" --app-version "${REF#v}"
+            identity="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/v"
+          else
+            helm package charts/ortus -d dist
+            identity="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@"
+          fi
           cd dist
           sha256sum *.tgz > SHA256SUMS
           cosign sign-blob --yes --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS
           cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
-            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
+            --certificate-identity-regexp "$identity" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chart
           path: dist
-      - name: Publish
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish, and sign the pushed chart
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
         run: |
-          echo "${{ github.token }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm push dist/*.tgz oci://ghcr.io/ortus-sovereign-cloud/charts
-          gh release create "$GITHUB_REF_NAME" dist/* --title "Ortus chart $GITHUB_REF_NAME" --notes "The Ortus Helm chart. Check SHA256SUMS with cosign as the install guide says." --verify-tag
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          printf '%s' "$GH_TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
+          pushed=$(helm push dist/*.tgz oci://ghcr.io/ortus-sovereign-cloud/charts 2>&1 | tee /dev/stderr | sed -n 's/^Digest: //p')
+          cosign sign --yes "ghcr.io/ortus-sovereign-cloud/charts/ortus@$pushed"
+          gh release create "$REF" dist/* --title "Ortus chart $REF" --notes "The Ortus Helm chart, oci://ghcr.io/ortus-sovereign-cloud/charts/ortus. Check it as the install guide says." --verify-tag

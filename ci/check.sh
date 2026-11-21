@@ -18,6 +18,15 @@ fi
 if helm template t charts/ortus --set files.mode=elsewhere >/dev/null 2>&1; then
   echo "check: an unknown files.mode must be refused" >&2; exit 1
 fi
+# Mail and call media are reachable: their Services on the standard ports
+# (465 and 993 only with a certificate), the public address and extra
+# settings reach every container.
+mailed="$(helm template t charts/ortus --set roles.mail.tlsSecret=mx --set roles.media.publicAddress=203.0.113.7:40000 --set publicUrl=https://ortus.example.org --set 'extraEnv[0].name=ORTUS_TRUSTED_PROXIES' --set 'extraEnv[0].value=10.0.0.0/8')"
+for want in 'name: t-mail$' 'port: 25, targetPort: smtp' 'port: 993, targetPort: imaps' 'name: t-media$' 'protocol: UDP' 'value: "203.0.113.7:40000"' 'value: "https://ortus.example.org"' 'name: ORTUS_TRUSTED_PROXIES'; do
+  grep -q -- "$want" <<<"$mailed" || { echo "check: the chart does not render $want" >&2; exit 1; }
+done
+if helm template t charts/ortus | grep -q 'port: 993'; then echo "check: 993 needs a certificate" >&2; exit 1; fi
+
 # Every workload reads the one master key; a named secret replaces the made one.
 rendered="$(helm template t charts/ortus)"
 workloads=$(grep -c '^kind: \(Deployment\|CronJob\)' <<<"$rendered")

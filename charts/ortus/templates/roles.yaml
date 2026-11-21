@@ -54,15 +54,113 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 5
           {{- end }}
+          {{- if eq $role "mail" }}
+            - name: ORTUS_SMTP_LISTEN
+              value: "0.0.0.0:2525"
+            - name: ORTUS_SUBMISSION_LISTEN
+              value: "0.0.0.0:2587"
+            - name: ORTUS_SUBMISSIONS_LISTEN
+              value: "0.0.0.0:2465"
+            - name: ORTUS_IMAP_LISTEN
+              value: "0.0.0.0:2143"
+            - name: ORTUS_IMAPS_LISTEN
+              value: "0.0.0.0:2993"
+            {{- with $spec.hostname }}
+            - name: ORTUS_MAIL_HOSTNAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $spec.tlsSecret }}
+            - name: ORTUS_MAIL_TLS_CERT
+              value: /tls/tls.crt
+            - name: ORTUS_MAIL_TLS_KEY
+              value: /tls/tls.key
+            {{- end }}
+          ports:
+            - {name: smtp, containerPort: 2525}
+            - {name: submission, containerPort: 2587}
+            - {name: imap, containerPort: 2143}
+            {{- if $spec.tlsSecret }}
+            - {name: submissions, containerPort: 2465}
+            - {name: imaps, containerPort: 2993}
+            {{- end }}
+          {{- end }}
+          {{- if eq $role "media" }}
+            - name: ORTUS_MEDIA_LISTEN
+              value: "0.0.0.0:{{ $spec.port }}"
+            {{- with $spec.publicAddress }}
+            - name: ORTUS_MEDIA_PUBLIC
+              value: {{ . | quote }}
+            {{- end }}
+          ports:
+            - {name: media-udp, containerPort: {{ $spec.port }}, protocol: UDP}
+            - {name: media-tcp, containerPort: {{ $spec.port }}, protocol: TCP}
+          {{- end }}
           securityContext: {{ toYaml $root.Values.securityContext | nindent 12 }}
           resources: {{ toYaml $spec.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /data
+            {{- if and (eq $role "mail") $spec.tlsSecret }}
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: data
           emptyDir: {}
+        {{- if and (eq $role "mail") $spec.tlsSecret }}
+        - name: tls
+          secret:
+            secretName: {{ $spec.tlsSecret }}
+        {{- end }}
 {{- end }}
+{{- end }}
+{{- if .Values.roles.mail.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ortus.name" . }}-mail
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mail
+  {{- with .Values.roles.mail.service.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.roles.mail.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: mail
+  ports:
+    - {name: smtp, port: 25, targetPort: smtp}
+    - {name: submission, port: 587, targetPort: submission}
+    - {name: imap, port: 143, targetPort: imap}
+    {{- if .Values.roles.mail.tlsSecret }}
+    - {name: submissions, port: 465, targetPort: submissions}
+    - {name: imaps, port: 993, targetPort: imaps}
+    {{- end }}
+{{- end }}
+{{- if .Values.roles.media.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ortus.name" . }}-media
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: media
+  {{- with .Values.roles.media.service.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.roles.media.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: media
+  ports:
+    - {name: media-udp, port: {{ .Values.roles.media.port }}, targetPort: media-udp, protocol: UDP}
+    - {name: media-tcp, port: {{ .Values.roles.media.port }}, targetPort: media-tcp, protocol: TCP}
 {{- end }}
 ---
 apiVersion: v1

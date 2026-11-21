@@ -26,6 +26,13 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- define "ortus.env" -}}
 - name: ORTUS_DATA_DIR
   value: /data
+{{- with .Values.publicUrl }}
+- name: ORTUS_PUBLIC_URL
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.extraEnv }}
+{{ toYaml . }}
+{{- end }}
 - name: ORTUS_DATABASE_URL
   valueFrom:
     secretKeyRef:
