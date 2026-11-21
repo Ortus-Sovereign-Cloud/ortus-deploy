@@ -1,0 +1,46 @@
+# A chart release: for a tag vX.Y.Z, the packaged chart pushed to
+# ghcr.io/ortus-sovereign-cloud/charts and attached to the release, with
+# its checksum signed keylessly (Sigstore), naming this workflow. Run by
+# hand it is a dry run: packaged and signed, kept as a CI artifact.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Package and sign
+        run: |
+          helm lint --strict charts/ortus
+          mkdir -p dist
+          helm package charts/ortus -d dist
+          cd dist
+          sha256sum *.tgz > SHA256SUMS
+          cosign sign-blob --yes --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS
+          cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: dist
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "${{ github.token }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push dist/*.tgz oci://ghcr.io/ortus-sovereign-cloud/charts
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Ortus chart $GITHUB_REF_NAME" --notes "The Ortus Helm chart. Check SHA256SUMS with cosign as the install guide says." --verify-tag
