@@ -4,7 +4,9 @@ description: Ortus, a sovereign workspace (mail, calendar, files, documents, cha
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-license: MIT OR Apache-2.0
+annotations:
+  # Not a Chart.yaml field of its own: newer Helm refuses one.
+  artifacthub.io/license: MIT OR Apache-2.0
 home: https://github.com/Ortus-Sovereign-Cloud/ortus-deploy
 sources:
   - https://github.com/Ortus-Sovereign-Cloud/ortus

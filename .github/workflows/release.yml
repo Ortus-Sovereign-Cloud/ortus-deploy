@@ -20,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
       - uses: sigstore/cosign-installer@v3
       - name: Package and sign
         run: |
