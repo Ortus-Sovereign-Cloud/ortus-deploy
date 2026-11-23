@@ -61,6 +61,44 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
     secretKeyRef:
       name: {{ include "ortus.secretsSecret" . }}
       key: key
+{{- /* Restore points: in the files store, or one of their own. */}}
+{{- if .Values.restorePoints.external.endpoint }}
+- name: ORTUS_BACKUP_S3_ENDPOINT
+  value: {{ .Values.restorePoints.external.endpoint | quote }}
+- name: ORTUS_BACKUP_S3_BUCKET
+  value: {{ required "restorePoints.external.bucket is required with an endpoint" .Values.restorePoints.external.bucket | quote }}
+- name: ORTUS_BACKUP_S3_REGION
+  value: {{ .Values.restorePoints.external.region | quote }}
+- name: ORTUS_BACKUP_S3_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ required "restorePoints.external.existingSecret is required with an endpoint" .Values.restorePoints.external.existingSecret }}
+      key: access_key
+- name: ORTUS_BACKUP_S3_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.restorePoints.external.existingSecret }}
+      key: secret_key
+{{- else }}
+- name: ORTUS_BACKUP_S3_ENDPOINT
+  value: {{ include "ortus.s3Endpoint" . | quote }}
+- name: ORTUS_BACKUP_S3_BUCKET
+  value: {{ .Values.files.bucket | quote }}
+- name: ORTUS_BACKUP_S3_REGION
+  value: {{ .Values.files.region | quote }}
+- name: ORTUS_BACKUP_S3_ROOT
+  value: {{ .Values.restorePoints.root | quote }}
+- name: ORTUS_BACKUP_S3_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ortus.s3Secret" . }}
+      key: access_key
+- name: ORTUS_BACKUP_S3_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ortus.s3Secret" . }}
+      key: secret_key
+{{- end }}
 {{- end -}}
 
 {{/* The secret holding the master key that seals stored secrets. */}}

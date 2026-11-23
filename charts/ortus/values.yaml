@@ -50,6 +50,16 @@ roles:
     # call reach it at publicAddress (ip:port of the Service from outside).
     port: 40000
     publicAddress: ""
+    # The web pods reach the media pod here for call signalling (inside the
+    # cluster only).
+    signalPort: 7979
+    # A TURN relay for networks that allow only web ports: people's
+    # browsers reach it as `url` (turns:turn.example.org:443?transport=tcp)
+    # through a TLS proxy that passes that name's decrypted stream to the
+    # Service's port 3478. See the guide's Calls page.
+    turn:
+      enabled: false
+      url: ""
     service:
       type: LoadBalancer
       annotations: {}
@@ -127,6 +137,24 @@ files:
     image:
       repository: amazon/aws-cli
       tag: "2.31.39"
+
+# Hourly restore points (one folder or mailbox back, as it was). By default
+# in the files store, under restorePoints.root; or a store of their own
+# (better: another failure domain), with a secret holding access_key and
+# secret_key. Never on the pods' own disks, which do not outlive them.
+restorePoints:
+  root: restore-points
+  external:
+    endpoint: ""
+    bucket: ""
+    region: us-east-1
+    existingSecret: ""
+
+# CalDAV and CardDAV (calendar and contacts apps) on the web role, plain
+# HTTP for an ingress or proxy that terminates TLS in front of it.
+dav:
+  enabled: true
+  port: 8008
 
 # A backup of the database and files, as `ortus backup`, onto a volume.
 backup:

@@ -38,9 +38,17 @@ spec:
               value: "0.0.0.0"
             - name: ORTUS_WEB_PORT
               value: "7878"
+            {{- if $root.Values.dav.enabled }}
+            - name: ORTUS_DAV_LISTEN
+              value: "0.0.0.0:{{ $root.Values.dav.port }}"
+            {{- end }}
           ports:
             - name: http
               containerPort: 7878
+            {{- if $root.Values.dav.enabled }}
+            - name: dav
+              containerPort: {{ $root.Values.dav.port }}
+            {{- end }}
           # Starting includes bringing the database up to date, which can
           # take minutes after an upgrade.
           startupProbe:
@@ -75,6 +83,14 @@ spec:
             - name: ORTUS_MAIL_TLS_KEY
               value: /tls/tls.key
             {{- end }}
+          # Up when it takes mail.
+          readinessProbe:
+            tcpSocket: {port: smtp}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: smtp}
+            periodSeconds: 20
+            failureThreshold: 6
           ports:
             - {name: smtp, containerPort: 2525}
             - {name: submission, containerPort: 2587}
@@ -91,9 +107,35 @@ spec:
             - name: ORTUS_MEDIA_PUBLIC
               value: {{ . | quote }}
             {{- end }}
+            # Signalling on the pod's own address, which the web pods reach
+            # (not 127.0.0.1, which is each pod's own).
+            - name: POD_IP
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - name: ORTUS_MEDIA_SIGNAL_LISTEN
+              value: "0.0.0.0:{{ $spec.signalPort }}"
+            - name: ORTUS_MEDIA_SIGNAL_URL
+              value: "http://$(POD_IP):{{ $spec.signalPort }}"
+            {{- if $spec.turn.enabled }}
+            - name: ORTUS_TURN_LISTEN
+              value: "0.0.0.0:3478"
+            - name: ORTUS_TURN_URL
+              value: {{ required "roles.media.turn.url is required when the relay is on" $spec.turn.url | quote }}
+            {{- end }}
+          readinessProbe:
+            tcpSocket: {port: signal}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: signal}
+            periodSeconds: 20
+            failureThreshold: 6
           ports:
             - {name: media-udp, containerPort: {{ $spec.port }}, protocol: UDP}
             - {name: media-tcp, containerPort: {{ $spec.port }}, protocol: TCP}
+            - {name: signal, containerPort: {{ $spec.signalPort }}, protocol: TCP}
+            {{- if $spec.turn.enabled }}
+            - {name: turn, containerPort: 3478, protocol: TCP}
+            {{- end }}
           {{- end }}
           securityContext: {{ toYaml $root.Values.securityContext | nindent 12 }}
           resources: {{ toYaml $spec.resources | nindent 12 }}
@@ -161,6 +203,24 @@ spec:
   ports:
     - {name: media-udp, port: {{ .Values.roles.media.port }}, targetPort: media-udp, protocol: UDP}
     - {name: media-tcp, port: {{ .Values.roles.media.port }}, targetPort: media-tcp, protocol: TCP}
+{{- if .Values.roles.media.turn.enabled }}
+---
+# The TURN relay, for the TLS proxy in front (plain TCP; the proxy decrypts).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ortus.name" . }}-turn
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: media
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: media
+  ports:
+    - {name: turn, port: 3478, targetPort: turn, protocol: TCP}
+{{- end }}
 {{- end }}
 ---
 apiVersion: v1
@@ -179,6 +239,11 @@ spec:
     - name: http
       port: {{ .Values.web.service.port }}
       targetPort: http
+    {{- if .Values.dav.enabled }}
+    - name: dav
+      port: {{ .Values.dav.port }}
+      targetPort: dav
+    {{- end }}
 {{- if .Values.web.ingress.enabled }}
 ---
 apiVersion: networking.k8s.io/v1

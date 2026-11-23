@@ -26,6 +26,23 @@ for want in 'name: t-mail$' 'port: 25, targetPort: smtp' 'port: 993, targetPort:
   grep -q -- "$want" <<<"$mailed" || { echo "check: the chart does not render $want" >&2; exit 1; }
 done
 if helm template t charts/ortus | grep -q 'port: 993'; then echo "check: 993 needs a certificate" >&2; exit 1; fi
+# Restore points go to the files store (never a pod's own disk); call
+# signalling is on the pod's address; DAV has a port; the TURN relay
+# renders only when it is on and needs its address.
+whole="$(helm template t charts/ortus)"
+for want in 'name: ORTUS_BACKUP_S3_ROOT' 'value: "restore-points"' 'value: "http://$(POD_IP):7979"' 'name: dav' 'tcpSocket: {port: smtp}'; do
+  grep -qF -- "$want" <<<"$whole" || { echo "check: the chart does not render $want" >&2; exit 1; }
+done
+grep -q 'ORTUS_TURN_LISTEN' <<<"$whole" && { echo "check: TURN must be off by default" >&2; exit 1; }
+turned="$(helm template t charts/ortus --set roles.media.turn.enabled=true --set roles.media.turn.url=turns:turn.example.org:443?transport=tcp)"
+for want in 'name: t-turn' 'value: "turns:turn.example.org:443?transport=tcp"'; do
+  grep -qF -- "$want" <<<"$turned" || { echo "check: the chart does not render $want" >&2; exit 1; }
+done
+if helm template t charts/ortus --set roles.media.turn.enabled=true >/dev/null 2>&1; then
+  echo "check: a TURN relay without its address must be refused" >&2; exit 1
+fi
+external="$(helm template t charts/ortus --set restorePoints.external.endpoint=https://s3.other.example --set restorePoints.external.bucket=points --set restorePoints.external.existingSecret=points-keys)"
+grep -qF 'value: "https://s3.other.example"' <<<"$external" || { echo "check: restore points elsewhere do not render" >&2; exit 1; }
 
 # Every workload reads the one master key; a named secret replaces the made one.
 rendered="$(helm template t charts/ortus)"
