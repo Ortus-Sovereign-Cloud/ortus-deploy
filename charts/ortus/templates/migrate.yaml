@@ -1,0 +1,41 @@
+{{- if .Values.migrateJob.enabled }}
+# Before an upgrade's new pods start, the database is brought up to date
+# once (`ortus migrate`), so no new pod waits on it and the old pods keep
+# running on a schema they still understand (migrations only add: the
+# expand/contract rule in DECISIONS).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ortus.name" . }}-migrate
+  labels:
+    {{- include "ortus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "ortus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      {{- include "ortus.podSpecCommon" . | nindent 6 }}
+      restartPolicy: Never
+      containers:
+        - name: ortus
+          image: {{ include "ortus.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env:
+            {{- include "ortus.env" . | nindent 12 }}
+          securityContext: {{ toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}

@@ -150,6 +150,12 @@ restorePoints:
     region: us-east-1
     existingSecret: ""
 
+# Upgrades: migrate the database once in a pre-upgrade job before the new
+# pods start (`ortus migrate`, in every program since 2026-11-23). Turn it
+# off only for an image older than that.
+migrateJob:
+  enabled: true
+
 # CalDAV and CardDAV (calendar and contacts apps) on the web role, plain
 # HTTP for an ingress or proxy that terminates TLS in front of it.
 dav:
