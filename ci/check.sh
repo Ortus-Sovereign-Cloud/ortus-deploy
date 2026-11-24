@@ -50,7 +50,7 @@ grep -qF 'value: "https://s3.other.example"' <<<"$external" || { echo "check: re
 
 # Every workload reads the one master key; a named secret replaces the made one.
 rendered="$(helm template t charts/ortus)"
-workloads=$(grep -c '^kind: \(Deployment\|CronJob\|Job\)' <<<"$rendered")
+workloads=$(( $(grep -c '^kind: \(Deployment\|CronJob\)' <<<"$rendered") + $(grep -c '^  name: .*-migrate$' <<<"$rendered") ))
 keyed=$(grep -c 'name: ORTUS_SECRETS_KEY' <<<"$rendered")
 [ "$workloads" -ge 1 ] && [ "$keyed" -eq "$workloads" ] || { echo "check: $keyed of $workloads workloads get ORTUS_SECRETS_KEY" >&2; exit 1; }
 grep -q 'name: t-secrets$' <<<"$rendered" || { echo "check: the master key secret is not made" >&2; exit 1; }
